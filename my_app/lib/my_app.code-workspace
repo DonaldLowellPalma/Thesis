@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../../WATERGUARD-SERVER/waterguard_backend"
+		}
+	],
+	"settings": {}
+}

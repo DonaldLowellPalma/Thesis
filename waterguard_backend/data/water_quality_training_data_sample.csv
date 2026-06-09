@@ -1,0 +1,21 @@
+pH,TDS,Turbidity,Temperature,pH_score,TDS_score,Turbidity_score,Temp_score,WQI,Category,Recommended_Use,Safety_Advice,Risk_Level
+7.00,325.0,2.60,23.5,100.0,87.0,94.0,95.0,89.3,1,Drink after treatment + washing,Good physical parameters. Filter + disinfect (boil/UV/chlorine) before drinking. Lab-test recommended.,Low
+7.40,575.0,4.80,30.0,84.0,81.0,82.0,78.0,80.6,1,Drink after treatment + washing,Good physical parameters. Filter + disinfect (boil/UV/chlorine) before drinking. Lab-test recommended.,Low
+6.20,250.0,1.50,16.0,40.0,92.5,96.0,82.0,80.3,2,Washing clothes/dishes/bathing,Suitable for laundry, dishwashing, bathing. Pre-filter if turbid. Not recommended for drinking without advanced treatment.,Medium
+8.50,1500.0,25.00,33.0,60.0,30.0,35.0,68.0,49.6,2,Washing clothes/dishes/bathing,Suitable for laundry, dishwashing, bathing. Pre-filter if turbid. Not recommended for drinking without advanced treatment.,Medium
+6.80,650.0,4.00,29.0,94.0,76.0,84.0,74.0,82.6,1,Drink after treatment + washing,Good physical parameters. Filter + disinfect (boil/UV/chlorine) before drinking. Lab-test recommended.,Low
+5.80,1800.0,45.00,35.0,20.0,37.5,12.0,50.0,28.3,4,Too dirty - not recommended,High risk. Avoid for drinking or personal use. Use only for non-sensitive tasks or find alternative source. Treat and lab-test.,High
+7.10,450.0,1.80,26.0,100.0,85.0,92.0,90.0,88.1,1,Drink after treatment + washing,Good physical parameters. Filter + disinfect (boil/UV/chlorine) before drinking. Lab-test recommended.,Low
+8.20,2200.0,25.00,33.0,64.0,22.0,35.0,68.0,43.4,3,Marginal / limited use,Marginal quality. Best for rough cleaning (floors, car, non-contact uses). Avoid for clothes/dishes. Do not drink.,Medium
+6.20,1200.0,8.00,30.0,88.0,54.0,65.0,70.0,68.6,2,Washing clothes/dishes/bathing,Suitable for laundry, dishwashing, bathing. Pre-filter if turbid. Not recommended for drinking without advanced treatment.,Medium
+9.50,500.0,60.00,37.0,20.0,81.0,0.0,44.0,38.6,4,Too dirty - not recommended,High risk. Avoid for drinking or personal use. Use only for non-sensitive tasks or find alternative source. Treat and lab-test.,High
+7.00,300.0,0.50,24.0,100.0,100.0,100.0,94.0,96.2,1,Drink after treatment + washing,Good physical parameters. Filter + disinfect (boil/UV/chlorine) before drinking. Lab-test recommended.,Low
+6.90,800.0,6.00,27.0,96.0,72.8,78.0,86.0,82.2,2,Washing clothes/dishes/bathing,Suitable for laundry, dishwashing, bathing. Pre-filter if turbid. Not recommended for drinking without advanced treatment.,Medium
+7.30,420.0,2.50,28.0,100.0,87.4,94.4,82.0,88.8,1,Drink after treatment + washing,Good physical parameters. Filter + disinfect (boil/UV/chlorine) before drinking. Lab-test recommended.,Low
+8.00,1000.0,12.00,31.0,72.0,60.0,50.0,74.0,64.0,3,Marginal / limited use,Marginal quality. Best for rough cleaning (floors, car, non-contact uses). Avoid for clothes/dishes. Do not drink.,Medium
+7.20,150.0,0.80,22.0,100.0,94.0,98.0,92.0,95.6,1,Drink after treatment + washing,Good physical parameters. Filter + disinfect (boil/UV/chlorine) before drinking. Lab-test recommended.,Low
+6.50,900.0,10.00,29.5,60.0,64.0,50.0,74.5,62.2,2,Washing clothes/dishes/bathing,Suitable for laundry, dishwashing, bathing. Pre-filter if turbid. Not recommended for drinking without advanced treatment.,Medium
+5.90,2500.0,55.00,42.0,20.0,26.5,0.0,10.0,9.1,4,Too dirty - not recommended,High risk. Avoid for drinking or personal use. Use only for non-sensitive tasks or find alternative source. Treat and lab-test.,High
+7.00,350.0,1.20,21.0,100.0,83.5,96.0,90.0,88.9,1,Drink after treatment + washing,Good physical parameters. Filter + disinfect (boil/UV/chlorine) before drinking. Lab-test recommended.,Low
+6.30,1100.0,9.00,30.5,48.0,56.0,58.0,68.5,54.9,3,Marginal / limited use,Marginal quality. Best for rough cleaning (floors, car, non-contact uses). Avoid for clothes/dishes. Do not drink.,Medium
+9.80,4200.0,120.00,46.0,20.0,10.0,0.0,10.0,14.0,4,Too dirty - not recommended,High risk. Avoid for drinking or personal use. Use only for non-sensitive tasks or find alternative source. Treat and lab-test.,High

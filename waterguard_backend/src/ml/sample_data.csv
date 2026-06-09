@@ -1,0 +1,10 @@
+turbidity,tds,ph,temperature,label
+10,200,7.1,22.0,safe
+25,400,7.0,23.0,safe
+50,800,7.5,24.0,warning
+150,1600,6.8,20.0,unsafe
+200,1800,8.9,19.0,unsafe
+35,700,6.4,21.0,warning
+5,100,7.2,22.5,safe
+80,1200,8.0,25.0,warning
+140,1500,6.2,18.0,unsafe

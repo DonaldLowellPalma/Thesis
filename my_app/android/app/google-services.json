@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "692831002533",
+    "project_id": "waterguard-e1a02",
+    "storage_bucket": "waterguard-e1a02.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:692831002533:android:e7acd28826d54d2c9d524c",
+        "android_client_info": {
+          "package_name": "com.example.my_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBE76kP1EXlEKItN6nxE7VLCtBbcgDaH9U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
