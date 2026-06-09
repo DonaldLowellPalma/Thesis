@@ -62,9 +62,10 @@ class SensorApiService {
       while (true) {
         await Future.delayed(
           Duration(
-            seconds: DemoModeConfig.simulateSlowUpdates
-                ? DemoModeConfig.updateIntervalSeconds
-                : 2,
+            seconds:
+                DemoModeConfig.simulateSlowUpdates
+                    ? DemoModeConfig.updateIntervalSeconds
+                    : 2,
           ),
         );
         frame++;
@@ -78,16 +79,7 @@ class SensorApiService {
     }
 
     // Always emit one immediate snapshot for first paint.
-    try {
-      yield await fetchSensorData();
-    } catch (_) {
-      // If initial fetch fails but we have cached data, yield it
-      if (_latestSensorData != null) {
-        yield _latestSensorData!;
-      } else {
-        rethrow;
-      }
-    }
+    yield await fetchSensorData();
 
     var retryAttempt = 0;
     while (true) {
@@ -112,10 +104,9 @@ class SensorApiService {
         retryAttempt = 0;
         final dataLines = <String>[];
 
-        await for (final line
-            in response.stream
-                .transform(utf8.decoder)
-                .transform(const LineSplitter())) {
+        await for (final line in response.stream
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())) {
           if (line.isEmpty) {
             if (dataLines.isNotEmpty) {
               final payloadText = dataLines.join('\n');
@@ -123,30 +114,32 @@ class SensorApiService {
 
               final decoded = jsonDecode(payloadText);
               if (decoded is List) {
-                final sensors = decoded
-                    .whereType<Map<String, dynamic>>()
-                    .map(SensorData.fromMap)
-                    .toList();
+                final sensors =
+                    decoded
+                        .whereType<Map<String, dynamic>>()
+                        .map(SensorData.fromMap)
+                        .toList();
                 _latestSensorData = sensors;
                 _recordHistory(sensors);
                 yield sensors;
               } else if (decoded is Map<String, dynamic>) {
                 final sensorsJson = decoded['sensors'];
                 if (sensorsJson is List) {
-                  final sensors = sensorsJson
-                      .whereType<Map<String, dynamic>>()
-                      .map(SensorData.fromMap)
-                      .toList();
+                  final sensors =
+                      sensorsJson
+                          .whereType<Map<String, dynamic>>()
+                          .map(SensorData.fromMap)
+                          .toList();
 
                   final wqi = decoded['wqi'];
-                  _latestWqiData = wqi is Map
-                      ? Map<String, dynamic>.from(wqi)
-                      : null;
+                  _latestWqiData =
+                      wqi is Map ? Map<String, dynamic>.from(wqi) : null;
 
                   final prediction = decoded['prediction'];
-                  _latestPredictionData = prediction is Map
-                      ? Map<String, dynamic>.from(prediction)
-                      : null;
+                  _latestPredictionData =
+                      prediction is Map
+                          ? Map<String, dynamic>.from(prediction)
+                          : null;
 
                   _latestSensorData = sensors;
                   _recordHistory(sensors);
@@ -162,15 +155,11 @@ class SensorApiService {
           }
         }
       } on HandshakeException {
-        // Fallback fetch if realtime stream is unavailable.
-        try {
-          yield await fetchSensorData();
-        } catch (_) {}
+        // Stream unavailable, rethrow error
+        rethrow;
       } catch (_) {
-        // Fallback fetch if realtime stream disconnects.
-        try {
-          yield await fetchSensorData();
-        } catch (_) {}
+        // Stream disconnected, rethrow error
+        rethrow;
       }
 
       retryAttempt += 1;
@@ -199,36 +188,25 @@ class SensorApiService {
         headers: token != null ? {'Authorization': 'Bearer $token'} : null,
       );
     } on HandshakeException {
-      // If handshake fails and we have cached data, return it
-      if (_latestSensorData != null) {
-        return _latestSensorData!;
-      }
       throw Exception(
         'TLS handshake failed when contacting ${ApiConfig.baseUrl}. Check that the API URL uses a valid HTTPS certificate, or use an HTTP URL that the device is allowed to reach.',
       );
     }
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      // If fetch fails and we have cached data, return it
-      if (_latestSensorData != null) {
-        return _latestSensorData!;
-      }
       throw Exception('Failed to fetch sensor data (${response.statusCode})');
     }
 
     final decoded = jsonDecode(response.body);
     if (decoded is! List) {
-      // If payload is invalid and we have cached data, return it
-      if (_latestSensorData != null) {
-        return _latestSensorData!;
-      }
       throw Exception('Invalid sensor payload format');
     }
 
-    final sensors = decoded
-        .whereType<Map<String, dynamic>>()
-        .map(SensorData.fromMap)
-        .toList();
+    final sensors =
+        decoded
+            .whereType<Map<String, dynamic>>()
+            .map(SensorData.fromMap)
+            .toList();
 
     // Cache the successfully fetched data
     _latestSensorData = sensors;
@@ -271,20 +249,12 @@ class SensorApiService {
         body: jsonEncode(payload),
       );
     } on HandshakeException {
-      // If handshake fails and we have cached prediction, return it
-      if (_latestPredictionData != null) {
-        return _latestPredictionData!;
-      }
       throw Exception(
         'TLS handshake failed when contacting ${ApiConfig.baseUrl}. Check that the API URL uses a valid HTTPS certificate, or use an HTTP URL that the device is allowed to reach.',
       );
     }
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      // If prediction fails and we have cached prediction, return it
-      if (_latestPredictionData != null) {
-        return _latestPredictionData!;
-      }
       throw Exception('Prediction failed (${response.statusCode})');
     }
 
@@ -341,9 +311,10 @@ class SensorApiService {
     final category = body['category']?.toString().trim().toUpperCase();
     final score = body['score'];
     final description = body['description']?.toString().trim();
-    final recommendation = (body['recommendations'] is List)
-        ? (body['recommendations'] as List).whereType<String>().join('\n')
-        : null;
+    final recommendation =
+        (body['recommendations'] is List)
+            ? (body['recommendations'] as List).whereType<String>().join('\n')
+            : null;
 
     String classification = 'unknown';
     if (category == 'EXCELLENT' || category == 'DRINKABLE_WITH_TREATMENT') {

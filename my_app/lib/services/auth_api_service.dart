@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api_config.dart';
 import 'fcm_service.dart';
 import 'firebase_service.dart';
+import 'demo_mode_config.dart';
 import 'package:flutter/foundation.dart';
 
 class AuthApiService {
@@ -24,13 +25,25 @@ class AuthApiService {
   static const String _fullNameStorageKey = 'auth_full_name';
   static const String _emailStorageKey = 'auth_email';
 
+  // Demo credentials
+  static const String _demoEmail = "demo@waterguard.app";
+  static const String _demoPassword = "demo123";
+  static const String _demoFullName = "Demo User";
+
   Future<void> restoreSession() async {
+    if (DemoModeConfig.enableDemoMode) {
+      _token = "demo-token-12345";
+      _fullName = _demoFullName;
+      _email = _demoEmail;
+      debugPrint('[DEMO MODE] Session restored with demo user');
+      return;
+    }
+
     final prefs = await SharedPreferences.getInstance();
     _token = prefs.getString(_tokenStorageKey);
     _fullName = prefs.getString(_fullNameStorageKey);
     _email = prefs.getString(_emailStorageKey);
 
-    // Backfill profile fields for existing sessions that stored only a token.
     if ((_token ?? '').isNotEmpty &&
         ((_fullName ?? '').isEmpty || (_email ?? '').isEmpty)) {
       _hydrateProfileFromToken(_token!);
@@ -47,16 +60,36 @@ class AuthApiService {
   bool get isAuthenticated => (_token ?? '').isNotEmpty;
 
   Future<void> login({required String email, required String password}) async {
+    if (DemoModeConfig.enableDemoMode) {
+      await Future.delayed(const Duration(milliseconds: 800));
+
+      if (email.trim().toLowerCase() == _demoEmail && password == _demoPassword) {
+        _token = "demo-token-12345";
+        _fullName = _demoFullName;
+        _email = _demoEmail;
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_tokenStorageKey, _token!);
+        await prefs.setString(_fullNameStorageKey, _fullName!);
+        await prefs.setString(_emailStorageKey, _email!);
+
+        debugPrint('[DEMO MODE] Login successful');
+        return;
+      } else {
+        throw Exception('Invalid credentials.\n\nUse demo account:\nEmail: $_demoEmail\nPassword: $_demoPassword');
+      }
+    }
+
+    // =============== REAL LOGIN ===============
     final response = await _postJson(
-      path: '/api/auth/login',
-      payload: {'email': email, 'password': password},
+      '/api/auth/login',
+      {'email': email, 'password': password},
     );
 
     _token = _extractTokenOrThrow(response);
     _fullName = _extractUserField(response, 'fullName');
     _email = _extractUserField(response, 'email');
 
-    // Keep profile available even if backend omits user object in some responses.
     if (((_fullName ?? '').isEmpty || (_email ?? '').isEmpty) &&
         (_token ?? '').isNotEmpty) {
       _hydrateProfileFromToken(_token!);
@@ -66,16 +99,11 @@ class AuthApiService {
     await prefs.setString(_tokenStorageKey, _token!);
     if ((_fullName ?? '').isNotEmpty) {
       await prefs.setString(_fullNameStorageKey, _fullName!);
-    } else {
-      await prefs.remove(_fullNameStorageKey);
     }
     if ((_email ?? '').isNotEmpty) {
       await prefs.setString(_emailStorageKey, _email!);
-    } else {
-      await prefs.remove(_emailStorageKey);
     }
 
-    // Register FCM token with backend
     try {
       Future.delayed(const Duration(milliseconds: 500), () {
         FCMService.registerTokenWithBackend();
@@ -90,17 +118,22 @@ class AuthApiService {
     required String email,
     required String password,
   }) async {
+    if (DemoModeConfig.enableDemoMode) {
+      await Future.delayed(const Duration(milliseconds: 1000));
+      debugPrint('[DEMO MODE] Signup successful (simulated)');
+      return;
+    }
+
+    // =============== REAL SIGNUP ===============
     final response = await _postJson(
-      path: '/api/auth/register',
-      payload: {'fullName': name, 'email': email, 'password': password},
+      '/api/auth/register',
+      {'fullName': name, 'email': email, 'password': password},
     );
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
-      // Extract user ID from response
       final body = jsonDecode(response.body);
       final userId = body['user']?['id'] as String?;
 
-      // Save user data to Firebase
       if (userId != null) {
         try {
           await FirebaseService.instance.saveUserData(
@@ -109,12 +142,9 @@ class AuthApiService {
             email: email,
           );
         } catch (firebaseError) {
-          // Log Firebase error but don't fail signup
           debugPrint('Firebase save error: $firebaseError');
         }
       }
-
-      // Signup successful - user will login on the login page
       return;
     }
 
@@ -122,9 +152,14 @@ class AuthApiService {
   }
 
   Future<String?> requestPasswordReset({required String email}) async {
+    if (DemoModeConfig.enableDemoMode) {
+      debugPrint('[DEMO MODE] Password reset requested');
+      return "demo-reset-token-xyz";
+    }
+
     final response = await _postJson(
-      path: '/api/auth/forgot-password',
-      payload: {'email': email},
+      '/api/auth/forgot-password',
+      {'email': email},
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -133,14 +168,10 @@ class AuthApiService {
 
     try {
       final body = jsonDecode(response.body);
-      if (body is Map<String, dynamic>) {
-        return body['resetToken']?.toString();
-      }
+      return body['resetToken']?.toString();
     } catch (_) {
-      // ignore
+      return null;
     }
-
-    return null;
   }
 
   Future<bool> resetPassword({
@@ -148,9 +179,14 @@ class AuthApiService {
     required String resetToken,
     required String newPassword,
   }) async {
+    if (DemoModeConfig.enableDemoMode) {
+      debugPrint('[DEMO MODE] Password reset successful');
+      return true;
+    }
+
     final response = await _postJson(
-      path: '/api/auth/reset-password',
-      payload: {
+      '/api/auth/reset-password',
+      {
         'email': email,
         'resetToken': resetToken,
         'newPassword': newPassword,
@@ -163,18 +199,21 @@ class AuthApiService {
 
     try {
       final body = jsonDecode(response.body);
-      if (body is Map<String, dynamic>) {
-        return body['emailSent'] == true;
-      }
+      return body['emailSent'] == true;
     } catch (_) {
-      // ignore
+      return false;
     }
-
-    return false;
   }
 
   Future<void> logout() async {
-    // Unregister FCM token from backend
+    if (DemoModeConfig.enableDemoMode) {
+      _token = null;
+      _fullName = null;
+      _email = null;
+      debugPrint('[DEMO MODE] Logged out');
+      return;
+    }
+
     try {
       FCMService.unregisterTokenFromBackend();
     } catch (e) {
@@ -184,22 +223,18 @@ class AuthApiService {
     _token = null;
     _fullName = null;
     _email = null;
-    SharedPreferences.getInstance().then(
-      (prefs) => prefs.remove(_tokenStorageKey),
-    );
-    SharedPreferences.getInstance().then(
-      (prefs) => prefs.remove(_fullNameStorageKey),
-    );
-    SharedPreferences.getInstance().then(
-      (prefs) => prefs.remove(_emailStorageKey),
-    );
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_tokenStorageKey);
+    await prefs.remove(_fullNameStorageKey);
+    await prefs.remove(_emailStorageKey);
   }
 
   String? get token => _token;
-
   String? get fullName => _fullName;
-
   String? get email => _email;
+
+  // ==================== PRIVATE HELPERS ====================
 
   String _extractTokenOrThrow(http.Response response) {
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -208,15 +243,12 @@ class AuthApiService {
 
     final token = _extractToken(response);
     if ((token ?? '').isEmpty) {
-      throw Exception('Login succeeded but no token was returned by backend');
+      throw Exception('Login succeeded but no token was returned');
     }
     return token!;
   }
 
-  Future<http.Response> _postJson({
-    required String path,
-    required Map<String, dynamic> payload,
-  }) async {
+  Future<http.Response> _postJson(String path, Map<String, dynamic> payload) async {
     try {
       return await _client
           .post(
@@ -226,19 +258,13 @@ class AuthApiService {
           )
           .timeout(const Duration(seconds: 12));
     } on HandshakeException {
-      throw Exception(
-        'TLS handshake failed when contacting ${ApiConfig.baseUrl}. Check that the API URL uses a valid HTTPS certificate, or use an HTTP URL that the device is allowed to reach.',
-      );
+      throw Exception('TLS handshake failed when contacting ${ApiConfig.baseUrl}');
     } on SocketException {
-      throw Exception(
-        'Cannot reach backend at ${ApiConfig.baseUrl}. Start the server and ensure API_BASE_URL is correct for your device.',
-      );
-    } on HttpException {
-      throw Exception('Network error while contacting backend.');
-    } on FormatException {
-      throw Exception('Invalid response from backend.');
+      throw Exception('Cannot reach backend at ${ApiConfig.baseUrl}');
     } on TimeoutException {
-      throw Exception('Request timed out. Check backend connectivity.');
+      throw Exception('Request timed out');
+    } catch (e) {
+      throw Exception('Network error: $e');
     }
   }
 
@@ -246,14 +272,10 @@ class AuthApiService {
     try {
       final body = jsonDecode(response.body);
       if (body is Map<String, dynamic>) {
-        final token =
-            body['token'] ?? body['accessToken'] ?? body['access_token'];
-        return token?.toString();
+        return body['token'] ?? body['accessToken'] ?? body['access_token']?.toString();
       }
-      return null;
-    } catch (_) {
-      return null;
-    }
+    } catch (_) {}
+    return null;
   }
 
   String? _extractUserField(http.Response response, String key) {
@@ -262,60 +284,41 @@ class AuthApiService {
       if (body is Map<String, dynamic>) {
         final user = body['user'];
         if (user is Map<String, dynamic>) {
-          final value = user[key];
-          final text = value?.toString().trim();
-          if (text != null && text.isNotEmpty) {
-            return text;
-          }
+          return user[key]?.toString().trim();
         }
       }
-    } catch (_) {
-      // ignore
-    }
+    } catch (_) {}
     return null;
   }
 
   void _hydrateProfileFromToken(String token) {
     try {
       final parts = token.split('.');
-      if (parts.length != 3) {
-        return;
-      }
+      if (parts.length != 3) return;
 
-      final payload = parts[1];
-      final normalized = base64Url.normalize(payload);
-      final decoded = utf8.decode(base64Url.decode(normalized));
+      final payload = base64Url.normalize(parts[1]);
+      final decoded = utf8.decode(base64Url.decode(payload));
       final body = jsonDecode(decoded);
-      if (body is! Map<String, dynamic>) {
-        return;
-      }
 
-      final tokenName = body['fullName']?.toString().trim();
-      final tokenEmail = body['email']?.toString().trim();
-
-      if ((_fullName ?? '').isEmpty && (tokenName ?? '').isNotEmpty) {
-        _fullName = tokenName;
+      if (body is Map<String, dynamic>) {
+        if ((_fullName ?? '').isEmpty) {
+          _fullName = body['fullName']?.toString().trim();
+        }
+        if ((_email ?? '').isEmpty) {
+          _email = body['email']?.toString().trim();
+        }
       }
-      if ((_email ?? '').isEmpty && (tokenEmail ?? '').isNotEmpty) {
-        _email = tokenEmail;
-      }
-    } catch (_) {
-      // Ignore malformed token payload and keep current values.
-    }
+    } catch (_) {}
   }
 
   String _extractErrorMessage(http.Response response) {
     try {
       final body = jsonDecode(response.body);
       if (body is Map<String, dynamic>) {
-        final message = body['message'] ?? body['error'];
-        if (message != null && message.toString().trim().isNotEmpty) {
-          return message.toString();
-        }
+        final msg = body['message'] ?? body['error'];
+        if (msg != null) return msg.toString();
       }
-    } catch (_) {
-      // ignore
-    }
+    } catch (_) {}
     return 'Request failed (${response.statusCode})';
   }
 }

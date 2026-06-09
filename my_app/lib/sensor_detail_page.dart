@@ -395,7 +395,7 @@ class _SensorDetailPageState extends State<SensorDetailPage> {
                 PageRouteBuilder(
                   opaque: true,
                   pageBuilder: (context, animation, secondaryAnimation) =>
-                      HistoryPage(initialSensor: sensor),
+                      HistoryPage(),
                   transitionsBuilder:
                       (context, animation, secondaryAnimation, child) {
                         return FadeTransition(opacity: animation, child: child);

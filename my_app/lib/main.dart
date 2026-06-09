@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+
 import 'dashboard_page.dart';
 import 'login_page.dart';
 import 'signup_page.dart';
 import 'services/auth_api_service.dart';
 import 'services/firebase_service.dart';
 import 'services/fcm_service.dart';
+import 'services/demo_mode_config.dart';
+
+// ==================== EASY DEMO MODE TOGGLE ====================
+// Change this ONE word to switch between Demo and Real mode
+const bool DEMO_MODE = false;     // ←←← CHANGE THIS LINE ONLY
+// ============================================================
 
 // Top-level function to handle background messages
 @pragma('vm:entry-point')
@@ -17,11 +24,22 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ==================== DEMO MODE SETUP ====================
+  if (DEMO_MODE) {
+    DemoModeConfig.enable();
+  } else {
+    DemoModeConfig.disable();
+  }
+  // =======================================================
+
   await FirebaseService.initialize();
   await FCMService.initialize();
-  // Register background message handler
+  
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  
   await AuthApiService.instance.restoreSession();
+  
   runApp(const MyApp());
 }
 
@@ -31,7 +49,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Welcome',
+      title: 'WaterGuard',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF789CE6)),
@@ -64,7 +82,9 @@ class AppBackground extends StatefulWidget {
 class _AppBackgroundState extends State<AppBackground> {
   @override
   Widget build(BuildContext context) {
-    return Positioned.fill(child: Container(color: const Color(0xFFB5D2E6)));
+    return Positioned.fill(
+      child: Container(color: const Color(0xFFB5D2E6)),
+    );
   }
 }
 
@@ -91,10 +111,9 @@ class _SplashScreenState extends State<SplashScreen> {
           PageRouteBuilder(
             opaque: true,
             pageBuilder: (context, animation, secondaryAnimation) => nextPage,
-            transitionsBuilder:
-                (context, animation, secondaryAnimation, child) {
-                  return FadeTransition(opacity: animation, child: child);
-                },
+            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+              return FadeTransition(opacity: animation, child: child);
+            },
           ),
         );
       }
@@ -189,60 +208,21 @@ class WelcomeScreen extends StatelessWidget {
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ButtonStyle(
-                    backgroundColor: WidgetStateProperty.resolveWith<Color>((
-                      Set<WidgetState> states,
-                    ) {
-                      if (states.contains(WidgetState.pressed)) {
-                        return Color(0xFF0D47A1); // Dark blue when pressed
-                      } else if (states.contains(WidgetState.hovered)) {
-                        return Color(0xFF1B6CDF); // Blue when hovered
-                      }
-                      return const Color.fromARGB(
-                        255,
-                        255,
-                        255,
-                        255,
-                      ); // White by default
+                    backgroundColor: WidgetStateProperty.resolveWith<Color>((states) {
+                      if (states.contains(WidgetState.pressed)) return const Color(0xFF0D47A1);
+                      if (states.contains(WidgetState.hovered)) return const Color(0xFF1B6CDF);
+                      return Colors.white;
                     }),
-                    foregroundColor: WidgetStateProperty.resolveWith<Color>((
-                      Set<WidgetState> states,
-                    ) {
-                      if (states.contains(WidgetState.pressed) ||
-                          states.contains(WidgetState.hovered)) {
-                        return const Color.fromARGB(
-                          255,
-                          255,
-                          255,
-                          255,
-                        ); // White text when hovered or pressed
+                    foregroundColor: WidgetStateProperty.resolveWith<Color>((states) {
+                      if (states.contains(WidgetState.pressed) || states.contains(WidgetState.hovered)) {
+                        return Colors.white;
                       }
-                      return Colors.black; // Black text by default
+                      return Colors.black;
                     }),
-                    padding: WidgetStateProperty.all(
-                      const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                    shape: WidgetStateProperty.all(
-                      RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
+                    padding: WidgetStateProperty.all(const EdgeInsets.symmetric(vertical: 16)),
+                    shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                   ),
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      PageRouteBuilder(
-                        opaque: true,
-                        pageBuilder: (context, animation, secondaryAnimation) =>
-                            const LoginPage(),
-                        transitionsBuilder:
-                            (context, animation, secondaryAnimation, child) {
-                              return FadeTransition(
-                                opacity: animation,
-                                child: child,
-                              );
-                            },
-                      ),
-                    );
-                  },
+                  onPressed: () => Navigator.push(context, _fadeRoute(const LoginPage())),
                   child: const Text('Login', style: TextStyle(fontSize: 16)),
                 ),
               ),
@@ -251,51 +231,21 @@ class WelcomeScreen extends StatelessWidget {
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ButtonStyle(
-                    backgroundColor: WidgetStateProperty.resolveWith<Color>((
-                      Set<WidgetState> states,
-                    ) {
-                      if (states.contains(WidgetState.pressed)) {
-                        return Color(0xFF0D47A1); // Dark blue when pressed
-                      } else if (states.contains(WidgetState.hovered)) {
-                        return Color(0xFF1B6CDF); // Blue when hovered
-                      }
-                      return Colors.white; // White by default
+                    backgroundColor: WidgetStateProperty.resolveWith<Color>((states) {
+                      if (states.contains(WidgetState.pressed)) return const Color(0xFF0D47A1);
+                      if (states.contains(WidgetState.hovered)) return const Color(0xFF1B6CDF);
+                      return Colors.white;
                     }),
-                    foregroundColor: WidgetStateProperty.resolveWith<Color>((
-                      Set<WidgetState> states,
-                    ) {
-                      if (states.contains(WidgetState.pressed) ||
-                          states.contains(WidgetState.hovered)) {
-                        return Colors
-                            .white; // White text when hovered or pressed
+                    foregroundColor: WidgetStateProperty.resolveWith<Color>((states) {
+                      if (states.contains(WidgetState.pressed) || states.contains(WidgetState.hovered)) {
+                        return Colors.white;
                       }
-                      return Colors.black; // Black text by default
+                      return Colors.black;
                     }),
-                    padding: WidgetStateProperty.all(
-                      const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                    shape: WidgetStateProperty.all(
-                      RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
+                    padding: WidgetStateProperty.all(const EdgeInsets.symmetric(vertical: 16)),
+                    shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                   ),
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      PageRouteBuilder(
-                        opaque: true,
-                        pageBuilder: (context, animation, secondaryAnimation) =>
-                            const SignupPage(),
-                        transitionsBuilder:
-                            (context, animation, secondaryAnimation, child) {
-                              return FadeTransition(
-                                opacity: animation,
-                                child: child,
-                              );
-                            },
-                      ),
-                    );
-                  },
+                  onPressed: () => Navigator.push(context, _fadeRoute(const SignupPage())),
                   child: const Text('Sign Up', style: TextStyle(fontSize: 16)),
                 ),
               ),
@@ -305,30 +255,12 @@ class WelcomeScreen extends StatelessWidget {
       ),
     );
   }
-}
 
-class GradientText extends StatelessWidget {
-  const GradientText(
-    this.text, {
-    super.key,
-    required this.gradient,
-    this.style,
-  });
-
-  final String text;
-  final TextStyle? style;
-  final Gradient gradient;
-
-  @override
-  Widget build(BuildContext context) {
-    return ShaderMask(
-      shaderCallback: (bounds) => gradient.createShader(
-        Rect.fromLTWH(0, 0, bounds.width, bounds.height),
-      ),
-      child: Text(
-        text,
-        style: (style ?? const TextStyle()).copyWith(color: Colors.white),
-      ),
+  PageRouteBuilder _fadeRoute(Widget page) {
+    return PageRouteBuilder(
+      pageBuilder: (context, animation, secondaryAnimation) => page,
+      transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+          FadeTransition(opacity: animation, child: child),
     );
   }
 }

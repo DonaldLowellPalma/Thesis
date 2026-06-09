@@ -30,6 +30,7 @@ class _DashboardPageState extends State<DashboardPage> {
   bool _wqiLoading = true;
   Map<String, dynamic>? _predictionData;
   bool _predictionLoading = true;
+  String? _streamError;
 
   @override
   void initState() {
@@ -48,7 +49,16 @@ class _DashboardPageState extends State<DashboardPage> {
       _predictionLoading = false;
     }
 
-    _sensorSubscription = _sensorStream.listen(_handleRealtimeSensorsUpdate);
+    _sensorSubscription = _sensorStream.listen(
+      _handleRealtimeSensorsUpdate,
+      onError: (error) {
+        if (mounted) {
+          setState(() {
+            _streamError = error.toString();
+          });
+        }
+      },
+    );
   }
 
   @override
@@ -67,6 +77,7 @@ class _DashboardPageState extends State<DashboardPage> {
     final predictionData = _sensorService.latestPredictionData;
 
     setState(() {
+      _streamError = null; // Clear error when data arrives successfully
       if (wqiData != null) {
         _wqiData = wqiData;
         _wqiLoading = false;
@@ -252,9 +263,8 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   int getOverallWaterQualityScore(List<SensorData> sensors) {
-    final onlineSensors = sensors
-        .where((sensor) => !sensor.isOffline())
-        .toList();
+    final onlineSensors =
+        sensors.where((sensor) => !sensor.isOffline()).toList();
     if (onlineSensors.isEmpty) {
       return 0;
     }
@@ -342,8 +352,9 @@ class _DashboardPageState extends State<DashboardPage> {
     Navigator.of(context).push(
       PageRouteBuilder(
         opaque: true,
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            NotificationsPage(notifications: notifications),
+        pageBuilder:
+            (context, animation, secondaryAnimation) =>
+                NotificationsPage(notifications: notifications),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(opacity: animation, child: child);
         },
@@ -384,12 +395,16 @@ class _DashboardPageState extends State<DashboardPage> {
     Navigator.of(context).pushAndRemoveUntil(
       PageRouteBuilder(
         opaque: true,
-        pageBuilder: (routeContext, animation, secondaryAnimation) =>
-            const LoginPage(),
-        transitionsBuilder:
-            (routeContext, animation, secondaryAnimation, child) {
-              return FadeTransition(opacity: animation, child: child);
-            },
+        pageBuilder:
+            (routeContext, animation, secondaryAnimation) => const LoginPage(),
+        transitionsBuilder: (
+          routeContext,
+          animation,
+          secondaryAnimation,
+          child,
+        ) {
+          return FadeTransition(opacity: animation, child: child);
+        },
       ),
       (route) => false,
     );
@@ -772,15 +787,16 @@ class _DashboardPageState extends State<DashboardPage> {
     final isAuth = AuthApiService.instance.isAuthenticated;
     final profileName = AuthApiService.instance.fullName;
     final profileEmail = AuthApiService.instance.email;
-    final displayName = (profileName ?? '').trim().isNotEmpty
-        ? profileName!.trim()
-        : (isAuth ? 'Signed in account' : 'Guest');
-    final displayEmail = (profileEmail ?? '').trim().isNotEmpty
-        ? profileEmail!.trim()
-        : (isAuth ? 'Account email unavailable' : 'Not signed in');
-    final avatarLetter = displayName.isNotEmpty
-        ? displayName[0].toUpperCase()
-        : 'U';
+    final displayName =
+        (profileName ?? '').trim().isNotEmpty
+            ? profileName!.trim()
+            : (isAuth ? 'Signed in account' : 'Guest');
+    final displayEmail =
+        (profileEmail ?? '').trim().isNotEmpty
+            ? profileEmail!.trim()
+            : (isAuth ? 'Account email unavailable' : 'Not signed in');
+    final avatarLetter =
+        displayName.isNotEmpty ? displayName[0].toUpperCase() : 'U';
 
     return Drawer(
       child: SafeArea(
@@ -806,19 +822,19 @@ class _DashboardPageState extends State<DashboardPage> {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color:
-                          (isAuth
-                                  ? const Color(0xFF6BCB77)
-                                  : const Color(0xFF888888))
-                              .withValues(alpha: 0.2),
+                      color: (isAuth
+                              ? const Color(0xFF6BCB77)
+                              : const Color(0xFF888888))
+                          .withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: Text(
                       isAuth ? 'Logged in' : 'Guest',
                       style: TextStyle(
-                        color: isAuth
-                            ? const Color(0xFF2E7D32)
-                            : const Color(0xFF555555),
+                        color:
+                            isAuth
+                                ? const Color(0xFF2E7D32)
+                                : const Color(0xFF555555),
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
                       ),
@@ -850,11 +866,12 @@ class _DashboardPageState extends State<DashboardPage> {
                 Navigator.of(context).pop();
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => ProfilePage(
-                      displayName: displayName,
-                      displayEmail: displayEmail,
-                      isAuthenticated: isAuth,
-                    ),
+                    builder:
+                        (_) => ProfilePage(
+                          displayName: displayName,
+                          displayEmail: displayEmail,
+                          isAuthenticated: isAuth,
+                        ),
                   ),
                 );
               },
@@ -895,9 +912,86 @@ class _DashboardPageState extends State<DashboardPage> {
     return StreamBuilder<List<SensorData>>(
       stream: _sensorStream,
       builder: (context, snapshot) {
-        final sensors = snapshot.data?.isNotEmpty == true
-            ? snapshot.data!
-            : getFallbackSensorData();
+        // Check if there's a stream error
+        if (_streamError != null) {
+          return Scaffold(
+            backgroundColor: const Color(0xFFB5D2E6),
+            appBar: AppBar(
+              title: const Text('WaterGuard'),
+              backgroundColor: const Color(0xFF789CE6),
+            ),
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      color: Color(0xFFFF6B6B),
+                      size: 64,
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Connection Error',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F2A44),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Failed to fetch sensor data.\n\n$_streamError',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF0F2A44),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton(
+                      onPressed: () {
+                        // Recreate the stream subscription to retry
+                        _sensorSubscription?.cancel();
+                        _sensorStream =
+                            _sensorService
+                                .streamSensorData()
+                                .asBroadcastStream();
+                        _sensorSubscription = _sensorStream.listen(
+                          _handleRealtimeSensorsUpdate,
+                          onError: (error) {
+                            if (mounted) {
+                              setState(() {
+                                _streamError = error.toString();
+                              });
+                            }
+                          },
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF789CE6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 32,
+                          vertical: 12,
+                        ),
+                      ),
+                      child: const Text(
+                        'Retry',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        final sensors =
+            snapshot.data?.isNotEmpty == true
+                ? snapshot.data!
+                : getFallbackSensorData();
 
         return Scaffold(
           key: _scaffoldKey,
@@ -939,8 +1033,8 @@ class _DashboardPageState extends State<DashboardPage> {
                         color: Colors.white,
                         size: 28,
                       ),
-                      onPressed: () =>
-                          _scaffoldKey.currentState?.openEndDrawer(),
+                      onPressed:
+                          () => _scaffoldKey.currentState?.openEndDrawer(),
                     ),
                   ],
                 ),
@@ -1208,52 +1302,53 @@ class _DashboardPageState extends State<DashboardPage> {
                                       ),
                                       child:
                                           _wqiData != null &&
-                                              _wqiData!['sensors'] != null
-                                          ? Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  'Sensor Readings',
-                                                  style: const TextStyle(
-                                                    color: Color(0xFF1E3A5F),
+                                                  _wqiData!['sensors'] != null
+                                              ? Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    'Sensor Readings',
+                                                    style: const TextStyle(
+                                                      color: Color(0xFF1E3A5F),
+                                                      fontSize: 11,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 8),
+                                                  _buildQISensorRow(
+                                                    'Turbidity',
+                                                    '${(_wqiData!['sensors']['turbidity'] as num).toString()} NTU',
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  _buildQISensorRow(
+                                                    'pH',
+                                                    (_wqiData!['sensors']['phLevel']
+                                                            as num)
+                                                        .toStringAsFixed(1),
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  _buildQISensorRow(
+                                                    'Temp',
+                                                    '${(_wqiData!['sensors']['temperature'] as num).toStringAsFixed(1)}°C',
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  _buildQISensorRow(
+                                                    'TDS',
+                                                    '${(_wqiData!['sensors']['tds'] as num).toStringAsFixed(1)} ppm',
+                                                  ),
+                                                ],
+                                              )
+                                              : Center(
+                                                child: Text(
+                                                  'Loading sensor data...',
+                                                  style: TextStyle(
+                                                    color: Colors.grey[600],
                                                     fontSize: 11,
-                                                    fontWeight: FontWeight.w600,
                                                   ),
                                                 ),
-                                                const SizedBox(height: 8),
-                                                _buildQISensorRow(
-                                                  'Turbidity',
-                                                  '${(_wqiData!['sensors']['turbidity'] as num).toString()} NTU',
-                                                ),
-                                                const SizedBox(height: 6),
-                                                _buildQISensorRow(
-                                                  'pH',
-                                                  (_wqiData!['sensors']['phLevel']
-                                                          as num)
-                                                      .toStringAsFixed(1),
-                                                ),
-                                                const SizedBox(height: 6),
-                                                _buildQISensorRow(
-                                                  'Temp',
-                                                  '${(_wqiData!['sensors']['temperature'] as num).toStringAsFixed(1)}°C',
-                                                ),
-                                                const SizedBox(height: 6),
-                                                _buildQISensorRow(
-                                                  'TDS',
-                                                  '${(_wqiData!['sensors']['tds'] as num).toStringAsFixed(1)} ppm',
-                                                ),
-                                              ],
-                                            )
-                                          : Center(
-                                              child: Text(
-                                                'Loading sensor data...',
-                                                style: TextStyle(
-                                                  color: Colors.grey[600],
-                                                  fontSize: 11,
-                                                ),
                                               ),
-                                            ),
                                     ),
                                   ),
                                 ],
@@ -1286,13 +1381,15 @@ class _DashboardPageState extends State<DashboardPage> {
                         itemCount: sensors.length,
                         itemBuilder: (context, index) {
                           final sensor = sensors[index];
-                          final sensorStatus = sensor.isOffline()
-                              ? 'offline'
-                              : sensor.getStatus();
+                          final sensorStatus =
+                              sensor.isOffline()
+                                  ? 'offline'
+                                  : sensor.getStatus();
                           // Human-friendly description for display
-                          final sensorDesc = sensor.isOffline()
-                              ? 'Offline'
-                              : sensor.getStatusDescription();
+                          final sensorDesc =
+                              sensor.isOffline()
+                                  ? 'Offline'
+                                  : sensor.getStatusDescription();
                           final statusColor = getStatusColor(sensorStatus);
 
                           return GestureDetector(
@@ -1306,18 +1403,17 @@ class _DashboardPageState extends State<DashboardPage> {
                                         animation,
                                         secondaryAnimation,
                                       ) => SensorDetailPage(sensor: sensor),
-                                  transitionsBuilder:
-                                      (
-                                        context,
-                                        animation,
-                                        secondaryAnimation,
-                                        child,
-                                      ) {
-                                        return FadeTransition(
-                                          opacity: animation,
-                                          child: child,
-                                        );
-                                      },
+                                  transitionsBuilder: (
+                                    context,
+                                    animation,
+                                    secondaryAnimation,
+                                    child,
+                                  ) {
+                                    return FadeTransition(
+                                      opacity: animation,
+                                      child: child,
+                                    );
+                                  },
                                 ),
                               );
                             },
@@ -1365,10 +1461,11 @@ class _DashboardPageState extends State<DashboardPage> {
                                         text: TextSpan(
                                           children: [
                                             TextSpan(
-                                              text: sensor.isOffline()
-                                                  ? 'N/A'
-                                                  : sensor.value
-                                                        .toStringAsFixed(1),
+                                              text:
+                                                  sensor.isOffline()
+                                                      ? 'N/A'
+                                                      : sensor.value
+                                                          .toStringAsFixed(1),
                                               style: const TextStyle(
                                                 color: Color(0xFF1E3A5F),
                                                 fontSize: 24,
