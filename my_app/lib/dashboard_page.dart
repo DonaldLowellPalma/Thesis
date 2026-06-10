@@ -7,7 +7,6 @@ import 'login_page.dart';
 import 'profile_page.dart';
 import 'sensor_detail_page.dart';
 import 'history_page.dart';
-// import 'services/esp32_setup_service.dart';
 import 'services/auth_api_service.dart';
 import 'services/sensor_firestore_service.dart';
 import 'widgets/sensor_icon.dart';
@@ -22,62 +21,59 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   final SensorApiService _sensorService = SensorApiService();
-  late final Stream<List<SensorData>> _sensorStream;
-  StreamSubscription<List<SensorData>>? _sensorSubscription;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  Stream<List<SensorData>>? _sensorStream;
 
   Map<String, dynamic>? _wqiData;
   bool _wqiLoading = true;
+
   Map<String, dynamic>? _predictionData;
   bool _predictionLoading = true;
+
   String? _streamError;
 
   @override
   void initState() {
     super.initState();
-    _sensorStream = _sensorService.streamSensorData().asBroadcastStream();
 
-    // Initialize _wqiData and _predictionData from cached data if available
+    _initStream();
+
     _wqiData = _sensorService.latestWqiData;
     _predictionData = _sensorService.latestPredictionData;
 
-    // Update loading states based on whether we have initial cached data
-    if (_wqiData != null) {
-      _wqiLoading = false;
-    }
-    if (_predictionData != null) {
-      _predictionLoading = false;
-    }
+    if (_wqiData != null) _wqiLoading = false;
+    if (_predictionData != null) _predictionLoading = false;
+  }
 
-    _sensorSubscription = _sensorStream.listen(
-      _handleRealtimeSensorsUpdate,
-      onError: (error) {
-        if (mounted) {
-          setState(() {
-            _streamError = error.toString();
-          });
-        }
-      },
-    );
+  void _initStream() {
+    _sensorStream =
+        _sensorService.streamSensorData().asBroadcastStream();
   }
 
   @override
   void dispose() {
-    _sensorSubscription?.cancel();
     _sensorService.dispose();
     super.dispose();
   }
 
+  // ---------------- STREAM HANDLER ----------------
+
+  void _retryStream() {
+    setState(() {
+      _streamError = null;
+      _initStream();
+    });
+  }
+
   void _handleRealtimeSensorsUpdate(List<SensorData> sensors) {
-    if (!mounted || sensors.isEmpty) {
-      return;
-    }
+    if (!mounted || sensors.isEmpty) return;
 
     final wqiData = _sensorService.latestWqiData;
     final predictionData = _sensorService.latestPredictionData;
 
     setState(() {
-      _streamError = null; // Clear error when data arrives successfully
+      _streamError = null;
       if (wqiData != null) {
         _wqiData = wqiData;
         _wqiLoading = false;
@@ -89,11 +85,12 @@ class _DashboardPageState extends State<DashboardPage> {
     });
   }
 
-  // Mock sensor data
+  // ---------------- FALLBACK DATA ----------------
+
   List<SensorData> getFallbackSensorData() {
     return [
       SensorData(
-        name: 'Water Clarity',
+        name: 'Turbidity',
         value: 3.4,
         unit: 'NTU',
         minSafe: 0.0,
@@ -101,29 +98,21 @@ class _DashboardPageState extends State<DashboardPage> {
         icon: '💧',
         trend: 'stable',
         previousValue: 3.4,
+        lastUpdated: DateTime.now(),
       ),
       SensorData(
-        name: 'pH Level',
-        value: 7.2,
-        unit: 'pH',
-        minSafe: 6.5,
-        maxSafe: 8.5,
-        icon: '⚗️',
-        trend: 'stable',
-        previousValue: 7.2,
-      ),
-      SensorData(
-        name: 'Saltiness',
-        value: 3.5,
-        unit: 'ppt',
+        name: 'TDS',
+        value: 300,
+        unit: 'ppm',
         minSafe: 0.0,
-        maxSafe: 10.0,
+        maxSafe: 500,
         icon: '🧂',
         trend: 'stable',
-        previousValue: 3.5,
+        previousValue: 300,
+        lastUpdated: DateTime.now(),
       ),
       SensorData(
-        name: 'Water Temperature',
+        name: 'Temperature',
         value: 26.8,
         unit: '°C',
         minSafe: 15.0,
@@ -131,11 +120,107 @@ class _DashboardPageState extends State<DashboardPage> {
         icon: '🌡️',
         trend: 'stable',
         previousValue: 26.8,
+        lastUpdated: DateTime.now(),
+      ),
+      SensorData(
+        name: 'pH',
+        value: 7.2,
+        unit: '',
+        minSafe: 6.5,
+        maxSafe: 8.5,
+        icon: '⚗️',
+        trend: 'stable',
+        previousValue: 7.2,
+        lastUpdated: DateTime.now(),
       ),
     ];
   }
 
-  // Generate mock notifications
+  // ---------------- STATUS HELPERS ----------------
+
+  Color getStatusColor(String status) {
+    switch (status) {
+      case 'offline':
+        return const Color(0xFF888888);
+      case 'danger':
+        return const Color(0xFFFF6B6B);
+      case 'warning':
+        return const Color(0xFFFFD93D);
+      default:
+        return const Color(0xFF6BCB77);
+    }
+  }
+
+  String formatAgeLabel(SensorData sensor) {
+    final seconds = sensor.ageInSeconds();
+    if (seconds < 60) return '${seconds}s ago';
+    final minutes = seconds ~/ 60;
+    if (minutes < 60) return '${minutes}m ago';
+    final hours = minutes ~/ 60;
+    return '${hours}h ago';
+  }
+
+  String getFreshnessSummary(List<SensorData> sensors) {
+    if (sensors.isEmpty) return 'No readings yet';
+
+    final latest = sensors
+        .map((sensor) => sensor.lastUpdated)
+        .reduce((a, b) => a.isAfter(b) ? a : b);
+    final age = DateTime.now().difference(latest).inSeconds;
+
+    if (age < 5) return 'Updated just now';
+    if (age < 60) return 'Updated ${age}s ago';
+    return 'Updated ${(age ~/ 60)}m ago';
+  }
+
+  int getOverallWaterQualityScore(List<SensorData> sensors) {
+    final onlineSensors =
+        sensors.where((sensor) => !sensor.isOffline()).toList();
+    if (onlineSensors.isEmpty) return 0;
+
+    final totalScore = onlineSensors.fold<int>(
+      0,
+      (sum, sensor) => sum + sensor.getQualityScore(),
+    );
+
+    return (totalScore ~/ onlineSensors.length).clamp(0, 100);
+  }
+
+  String getOverallQualityLabel(int score, List<SensorData> sensors) {
+    if (sensors.every((sensor) => sensor.isOffline())) return 'Offline';
+    if (score >= 85) return 'Excellent';
+    if (score >= 60) return 'Monitor';
+    return 'Critical';
+  }
+
+  Color getOverallQualityColor(int score, List<SensorData> sensors) {
+    if (sensors.every((sensor) => sensor.isOffline())) {
+      return const Color(0xFF888888);
+    }
+    if (score >= 85) return const Color(0xFF6BCB77);
+    if (score >= 60) return const Color(0xFFFFD93D);
+    return const Color(0xFFFF6B6B);
+  }
+
+  String getSensorCoverageSummary(List<SensorData> sensors) {
+    final online = sensors.where((sensor) => !sensor.isOffline()).length;
+    return '$online of ${sensors.length} sensors online';
+  }
+
+  int getAlertCount(List<SensorData> sensors) {
+    return sensors
+        .where((sensor) => sensor.isOffline() || sensor.getStatus() != 'safe')
+        .length;
+  }
+
+  List<SensorData> getAlertsensorData(List<SensorData> sensors) {
+    return sensors
+        .where((sensor) => sensor.isOffline() || sensor.getStatus() != 'safe')
+        .toList();
+  }
+
+  // ---------------- NOTIFICATIONS ----------------
+
   List<NotificationItem> getNotifications(List<SensorData> sensors) {
     final now = DateTime.now();
     final notifications = <NotificationItem>[];
@@ -217,103 +302,63 @@ class _DashboardPageState extends State<DashboardPage> {
     return notifications;
   }
 
-  Color getStatusColor(String status) {
-    switch (status) {
-      case 'offline':
-        return Color(0xFF888888);
-      case 'danger':
-        return Color(0xFFFF6B6B);
-      case 'warning':
-        return Color(0xFFFFD93D);
-      default:
-        return Color(0xFF6BCB77);
-    }
+  void showNotifications(BuildContext context, List<SensorData> sensors) {
+    final notifications = getNotifications(sensors);
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: true,
+        pageBuilder:
+            (context, animation, secondaryAnimation) =>
+                NotificationsPage(notifications: notifications),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
+    );
   }
 
-  String formatAgeLabel(SensorData sensor) {
-    final seconds = sensor.ageInSeconds();
-    if (seconds < 60) {
-      return '${seconds}s ago';
-    }
-    final minutes = seconds ~/ 60;
-    if (minutes < 60) {
-      return '${minutes}m ago';
-    }
-    final hours = minutes ~/ 60;
-    return '${hours}h ago';
-  }
+  // ---------------- LOGOUT ----------------
 
-  String getFreshnessSummary(List<SensorData> sensors) {
-    if (sensors.isEmpty) {
-      return 'No readings yet';
-    }
-
-    final latest = sensors
-        .map((sensor) => sensor.lastUpdated)
-        .reduce((a, b) => a.isAfter(b) ? a : b);
-    final age = DateTime.now().difference(latest).inSeconds;
-
-    if (age < 5) {
-      return 'Updated just now';
-    }
-    if (age < 60) {
-      return 'Updated ${age}s ago';
-    }
-    return 'Updated ${(age ~/ 60)}m ago';
-  }
-
-  int getOverallWaterQualityScore(List<SensorData> sensors) {
-    final onlineSensors =
-        sensors.where((sensor) => !sensor.isOffline()).toList();
-    if (onlineSensors.isEmpty) {
-      return 0;
-    }
-
-    final totalScore = onlineSensors.fold<int>(
-      0,
-      (sum, sensor) => sum + sensor.getQualityScore(),
+  Future<void> _handleLogout(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Log out?'),
+          content: const Text('You will be returned to the login screen.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Log out'),
+            ),
+          ],
+        );
+      },
     );
 
-    return (totalScore ~/ onlineSensors.length).clamp(0, 100);
+    if (confirmed != true) return;
+
+    AuthApiService.instance.logout();
+    if (!context.mounted) return;
+
+    Navigator.of(context).pushAndRemoveUntil(
+      PageRouteBuilder(
+        opaque: true,
+        pageBuilder:
+            (routeContext, animation, secondaryAnimation) => const LoginPage(),
+        transitionsBuilder: (routeContext, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
+      (route) => false,
+    );
   }
 
-  String getOverallQualityLabel(int score, List<SensorData> sensors) {
-    if (sensors.every((sensor) => sensor.isOffline())) {
-      return 'Offline';
-    }
-    if (score >= 85) {
-      return 'Excellent';
-    }
-    if (score >= 60) {
-      return 'Monitor';
-    }
-    return 'Critical';
-  }
-
-  Color getOverallQualityColor(int score, List<SensorData> sensors) {
-    if (sensors.every((sensor) => sensor.isOffline())) {
-      return const Color(0xFF888888);
-    }
-    if (score >= 85) {
-      return const Color(0xFF6BCB77);
-    }
-    if (score >= 60) {
-      return const Color(0xFFFFD93D);
-    }
-    return const Color(0xFFFF6B6B);
-  }
-
-  String getSensorCoverageSummary(List<SensorData> sensors) {
-    final online = sensors.where((sensor) => !sensor.isOffline()).length;
-    return '$online of ${sensors.length} sensors online';
-  }
-
-  // Get alert count for notification badge
-  int getAlertCount(List<SensorData> sensors) {
-    return sensors
-        .where((sensor) => sensor.isOffline() || sensor.getStatus() != 'safe')
-        .length;
-  }
+  // ---------------- WQI HELPER ----------------
 
   Widget _buildQISensorRow(String label, String value) {
     return Row(
@@ -339,449 +384,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // Get sensors with alerts
-  List<SensorData> getAlertsensorData(List<SensorData> sensors) {
-    return sensors
-        .where((sensor) => sensor.isOffline() || sensor.getStatus() != 'safe')
-        .toList();
-  }
-
-  // Show notifications page
-  void showNotifications(BuildContext context, List<SensorData> sensors) {
-    final notifications = getNotifications(sensors);
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        opaque: true,
-        pageBuilder:
-            (context, animation, secondaryAnimation) =>
-                NotificationsPage(notifications: notifications),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(opacity: animation, child: child);
-        },
-      ),
-    );
-  }
-
-  Future<void> _handleLogout(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Log out?'),
-          content: const Text('You will be returned to the login screen.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Log out'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true) {
-      return;
-    }
-
-    AuthApiService.instance.logout();
-    if (!context.mounted) {
-      return;
-    }
-
-    Navigator.of(context).pushAndRemoveUntil(
-      PageRouteBuilder(
-        opaque: true,
-        pageBuilder:
-            (routeContext, animation, secondaryAnimation) => const LoginPage(),
-        transitionsBuilder: (
-          routeContext,
-          animation,
-          secondaryAnimation,
-          child,
-        ) {
-          return FadeTransition(opacity: animation, child: child);
-        },
-      ),
-      (route) => false,
-    );
-  }
-
-  // Future<String?> _promptEsp32Host(BuildContext context) async {
-  //   final controller = TextEditingController(text: _esp32Host);
-
-  //   try {
-  //     return await showDialog<String>(
-  //       context: context,
-  //       builder: (dialogContext) {
-  //         return AlertDialog(
-  //           title: const Text('ESP32 Address'),
-  //           content: TextField(
-  //             controller: controller,
-  //             decoration: const InputDecoration(
-  //               labelText: 'ESP32 Host/IP',
-  //               hintText: '192.168.4.1',
-  //               border: OutlineInputBorder(),
-  //             ),
-  //           ),
-  //           actions: [
-  //             TextButton(
-  //               onPressed: () => Navigator.of(dialogContext).pop(),
-  //               child: const Text('Cancel'),
-  //             ),
-  //             ElevatedButton(
-  //               onPressed: () {
-  //                 final host = controller.text.trim();
-  //                 if (host.isEmpty) {
-  //                   ScaffoldMessenger.of(context).showSnackBar(
-  //                     const SnackBar(
-  //                       content: Text('Please enter ESP32 host/IP'),
-  //                     ),
-  //                   );
-  //                   return;
-  //                 }
-  //                 Navigator.of(dialogContext).pop(host);
-  //               },
-  //               child: const Text('Continue'),
-  //             ),
-  //           ],
-  //         );
-  //       },
-  //     );
-  //   } finally {
-  //     controller.dispose();
-  //   }
-  // }
-
-  // Future<String?> _promptWifiPassword(BuildContext context, String ssid) async {
-  //   final controller = TextEditingController();
-
-  //   try {
-  //     return await showDialog<String>(
-  //       context: context,
-  //       builder: (dialogContext) {
-  //         return AlertDialog(
-  //           title: Text('Password for $ssid'),
-  //           content: TextField(
-  //             controller: controller,
-  //             obscureText: true,
-  //             decoration: const InputDecoration(
-  //               labelText: 'WiFi Password',
-  //               border: OutlineInputBorder(),
-  //             ),
-  //           ),
-  //           actions: [
-  //             TextButton(
-  //               onPressed: () => Navigator.of(dialogContext).pop(),
-  //               child: const Text('Cancel'),
-  //             ),
-  //             ElevatedButton(
-  //               onPressed: () =>
-  //                   Navigator.of(dialogContext).pop(controller.text),
-  //               child: const Text('Connect'),
-  //             ),
-  //           ],
-  //         );
-  //       },
-  //     );
-  //   } finally {
-  //     controller.dispose();
-  //   }
-  // }
-
-  // IconData _signalIconForRssi(int rssi) {
-  //   if (rssi >= -55) return Icons.wifi;
-  //   if (rssi >= -67) return Icons.network_wifi_3_bar;
-  //   if (rssi >= -75) return Icons.network_wifi_2_bar;
-  //   return Icons.network_wifi_1_bar;
-  // }
-
-  // Future<void> _showConnectWifiFlow(BuildContext context) async {
-  //   final hostController = TextEditingController(text: _esp32Host);
-  //   var isSheetOpen = true;
-  //   List<WifiNetwork> networks = [];
-  //   WifiConnectionStatus wifiStatus = const WifiConnectionStatus(
-  //     connected: false,
-  //     currentSsid: '',
-  //     savedSsid: '',
-  //     connecting: false,
-  //     connectingToSsid: '',
-  //   );
-  //   bool isScanning = true;
-  //   bool isConnecting = false;
-
-  //   Future<void> refreshNetworks(StateSetter setModalState) async {
-  //     final host = hostController.text.trim();
-  //     if (host.isEmpty) {
-  //       ScaffoldMessenger.of(context).showSnackBar(
-  //         const SnackBar(content: Text('Please enter ESP32 host/IP')),
-  //       );
-  //       return;
-  //     }
-
-  //     _esp32Host = host;
-  //     if (!mounted || !isSheetOpen) return;
-  //     setModalState(() => isScanning = true);
-
-  //     try {
-  //       final results = await Future.wait([
-  //         _esp32SetupService.scanWifiNetworks(host: _esp32Host),
-  //         _esp32SetupService.getWifiStatus(host: _esp32Host),
-  //       ]);
-  //       networks = results[0] as List<WifiNetwork>;
-  //       wifiStatus = results[1] as WifiConnectionStatus;
-  //     } catch (error) {
-  //       if (!mounted || !isSheetOpen) return;
-  //       ScaffoldMessenger.of(context).showSnackBar(
-  //         SnackBar(content: Text('Failed to scan WiFi networks: $error')),
-  //       );
-  //     } finally {
-  //       if (mounted && isSheetOpen) {
-  //         setModalState(() => isScanning = false);
-  //       }
-  //     }
-  //   }
-
-  //   try {
-  //     await showModalBottomSheet<void>(
-  //       context: context,
-  //       isScrollControlled: true,
-  //       builder: (sheetContext) {
-  //         bool initialLoadTriggered = false;
-  //         return StatefulBuilder(
-  //           builder: (context, setModalState) {
-  //             if (!initialLoadTriggered) {
-  //               initialLoadTriggered = true;
-  //               Future.microtask(() => refreshNetworks(setModalState));
-  //             }
-
-  //             return SafeArea(
-  //               child: Padding(
-  //                 padding: EdgeInsets.only(
-  //                   left: 16,
-  //                   right: 16,
-  //                   top: 16,
-  //                   bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 12,
-  //                 ),
-  //                 child: Column(
-  //                   mainAxisSize: MainAxisSize.min,
-  //                   children: [
-  //                     Row(
-  //                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-  //                       children: [
-  //                         const Text(
-  //                           'Connect To WiFi',
-  //                           style: TextStyle(
-  //                             fontSize: 18,
-  //                             fontWeight: FontWeight.w700,
-  //                           ),
-  //                         ),
-  //                         IconButton(
-  //                           onPressed: isScanning
-  //                               ? null
-  //                               : () => refreshNetworks(setModalState),
-  //                           icon: const Icon(Icons.refresh),
-  //                           tooltip: 'Refresh',
-  //                         ),
-  //                       ],
-  //                     ),
-  //                     TextField(
-  //                       controller: hostController,
-  //                       decoration: const InputDecoration(
-  //                         labelText: 'ESP32 Host/IP',
-  //                         hintText: '192.168.4.1',
-  //                         border: OutlineInputBorder(),
-  //                         prefixIcon: Icon(Icons.router),
-  //                       ),
-  //                       onSubmitted: (_) => refreshNetworks(setModalState),
-  //                     ),
-  //                     const SizedBox(height: 10),
-  //                     if (isScanning) const LinearProgressIndicator(),
-  //                     const SizedBox(height: 8),
-  //                     SizedBox(
-  //                       height: 360,
-  //                       child: networks.isEmpty && !isScanning
-  //                           ? const Center(
-  //                               child: Padding(
-  //                                 padding: EdgeInsets.symmetric(horizontal: 8),
-  //                                 child: Text(
-  //                                   'No nearby WiFi networks found.\nESP32 scans only 2.4GHz networks and cannot see 5GHz-only SSIDs.',
-  //                                   textAlign: TextAlign.center,
-  //                                 ),
-  //                               ),
-  //                             )
-  //                           : ListView.separated(
-  //                               itemCount: networks.length,
-  //                               separatorBuilder: (_, __) =>
-  //                                   const Divider(height: 1),
-  //                               itemBuilder: (itemContext, index) {
-  //                                 final network = networks[index];
-  //                                 final isConnected =
-  //                                     wifiStatus.connected &&
-  //                                     wifiStatus.currentSsid == network.ssid;
-  //                                 final isConnectingToThis =
-  //                                     wifiStatus.connecting &&
-  //                                     wifiStatus.connectingToSsid ==
-  //                                         network.ssid;
-  //                                 final isSaved =
-  //                                     !isConnected &&
-  //                                     wifiStatus.savedSsid == network.ssid;
-
-  //                                 Widget? stateChip;
-  //                                 if (isConnected) {
-  //                                   stateChip = Container(
-  //                                     padding: const EdgeInsets.symmetric(
-  //                                       horizontal: 8,
-  //                                       vertical: 2,
-  //                                     ),
-  //                                     decoration: BoxDecoration(
-  //                                       color: const Color(
-  //                                         0xFF6BCB77,
-  //                                       ).withValues(alpha: 0.2),
-  //                                       borderRadius: BorderRadius.circular(12),
-  //                                     ),
-  //                                     child: const Text(
-  //                                       'Connected',
-  //                                       style: TextStyle(
-  //                                         color: Color(0xFF2E7D32),
-  //                                         fontSize: 11,
-  //                                         fontWeight: FontWeight.w600,
-  //                                       ),
-  //                                     ),
-  //                                   );
-  //                                 } else if (isConnectingToThis) {
-  //                                   stateChip = Container(
-  //                                     padding: const EdgeInsets.symmetric(
-  //                                       horizontal: 8,
-  //                                       vertical: 2,
-  //                                     ),
-  //                                     decoration: BoxDecoration(
-  //                                       color: const Color(
-  //                                         0xFFFFD93D,
-  //                                       ).withValues(alpha: 0.25),
-  //                                       borderRadius: BorderRadius.circular(12),
-  //                                     ),
-  //                                     child: const Text(
-  //                                       'Connecting...',
-  //                                       style: TextStyle(
-  //                                         color: Color(0xFF8A6D00),
-  //                                         fontSize: 11,
-  //                                         fontWeight: FontWeight.w600,
-  //                                       ),
-  //                                     ),
-  //                                   );
-  //                                 } else if (isSaved) {
-  //                                   stateChip = Container(
-  //                                     padding: const EdgeInsets.symmetric(
-  //                                       horizontal: 8,
-  //                                       vertical: 2,
-  //                                     ),
-  //                                     decoration: BoxDecoration(
-  //                                       color: const Color(
-  //                                         0xFF789CE6,
-  //                                       ).withValues(alpha: 0.2),
-  //                                       borderRadius: BorderRadius.circular(12),
-  //                                     ),
-  //                                     child: const Text(
-  //                                       'Saved',
-  //                                       style: TextStyle(
-  //                                         color: Color(0xFF1E3A5F),
-  //                                         fontSize: 11,
-  //                                         fontWeight: FontWeight.w600,
-  //                                       ),
-  //                                     ),
-  //                                   );
-  //                                 }
-
-  //                                 return ListTile(
-  //                                   leading: Icon(
-  //                                     _signalIconForRssi(network.rssi),
-  //                                     color: const Color(0xFF1E3A5F),
-  //                                   ),
-  //                                   title: Text(network.ssid),
-  //                                   subtitle: Text('${network.rssi} dBm'),
-  //                                   trailing: Row(
-  //                                     mainAxisSize: MainAxisSize.min,
-  //                                     children: [
-  //                                       if (stateChip != null) stateChip,
-  //                                       const SizedBox(width: 8),
-  //                                       network.secure
-  //                                           ? const Icon(Icons.lock_outline)
-  //                                           : const Icon(Icons.lock_open),
-  //                                     ],
-  //                                   ),
-  //                                   enabled: !isConnecting,
-  //                                   onTap: () async {
-  //                                     String password = '';
-  //                                     if (network.secure) {
-  //                                       final entered =
-  //                                           await _promptWifiPassword(
-  //                                             sheetContext,
-  //                                             network.ssid,
-  //                                           );
-  //                                       if (entered == null) return;
-  //                                       password = entered;
-  //                                     }
-
-  //                                     if (!mounted || !isSheetOpen) return;
-  //                                     setModalState(() => isConnecting = true);
-  //                                     try {
-  //                                       await _esp32SetupService.connectWifi(
-  //                                         ssid: network.ssid,
-  //                                         password: password,
-  //                                         host: _esp32Host,
-  //                                       );
-
-  //                                       if (!mounted) return;
-  //                                       Navigator.of(sheetContext).pop();
-  //                                       ScaffoldMessenger.of(
-  //                                         context,
-  //                                       ).showSnackBar(
-  //                                         SnackBar(
-  //                                           content: Text(
-  //                                             'Connecting ESP32 to ${network.ssid}...',
-  //                                           ),
-  //                                         ),
-  //                                       );
-  //                                     } catch (error) {
-  //                                       if (!mounted || !isSheetOpen) return;
-  //                                       ScaffoldMessenger.of(
-  //                                         context,
-  //                                       ).showSnackBar(
-  //                                         SnackBar(
-  //                                           content: Text(
-  //                                             'Failed to connect ESP32: $error',
-  //                                           ),
-  //                                         ),
-  //                                       );
-  //                                       if (isSheetOpen) {
-  //                                         setModalState(
-  //                                           () => isConnecting = false,
-  //                                         );
-  //                                       }
-  //                                     }
-  //                                   },
-  //                                 );
-  //                               },
-  //                             ),
-  //                     ),
-  //                   ],
-  //                 ),
-  //               ),
-  //             );
-  //           },
-  //         );
-  //       },
-  //     ).whenComplete(() {
-  //       isSheetOpen = false;
-  //     });
-  //   } finally {
-  //     hostController.dispose();
-  //   }
-  // }
+  // ---------------- DRAWER ----------------
 
   Widget _buildAppDrawer(BuildContext context, List<SensorData> sensors) {
     final isAuth = AuthApiService.instance.isAuthenticated;
@@ -890,9 +493,9 @@ class _DashboardPageState extends State<DashboardPage> {
               subtitle: const Text('View sensor reading history'),
               onTap: () {
                 Navigator.of(context).pop();
-                Navigator.of(
-                  context,
-                ).push(MaterialPageRoute(builder: (_) => const HistoryPage()));
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const HistoryPage()),
+                );
               },
             ),
             const Spacer(),
@@ -907,13 +510,16 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  // ---------------- BUILD ----------------
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<SensorData>>(
       stream: _sensorStream,
       builder: (context, snapshot) {
-        // Check if there's a stream error
-        if (_streamError != null) {
+        // Use snapshot.hasError OR _streamError (fix from first file)
+        if (snapshot.hasError || _streamError != null) {
+          debugPrint("STREAM ERROR: ${snapshot.error}");
           return Scaffold(
             backgroundColor: const Color(0xFFB5D2E6),
             appBar: AppBar(
@@ -942,7 +548,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Failed to fetch sensor data.\n\n$_streamError',
+                      'Failed to fetch sensor data.\n\n${_streamError ?? snapshot.error.toString()}',
                       style: const TextStyle(
                         fontSize: 14,
                         color: Color(0xFF0F2A44),
@@ -951,24 +557,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     ),
                     const SizedBox(height: 24),
                     ElevatedButton(
-                      onPressed: () {
-                        // Recreate the stream subscription to retry
-                        _sensorSubscription?.cancel();
-                        _sensorStream =
-                            _sensorService
-                                .streamSensorData()
-                                .asBroadcastStream();
-                        _sensorSubscription = _sensorStream.listen(
-                          _handleRealtimeSensorsUpdate,
-                          onError: (error) {
-                            if (mounted) {
-                              setState(() {
-                                _streamError = error.toString();
-                              });
-                            }
-                          },
-                        );
-                      },
+                      onPressed: _retryStream,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF789CE6),
                         padding: const EdgeInsets.symmetric(
@@ -1019,14 +608,12 @@ class _DashboardPageState extends State<DashboardPage> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Logo on the left
                     Image.asset(
                       'assets/images/logo.png',
                       height: 50,
                       width: 50,
                       fit: BoxFit.contain,
                     ),
-                    // Menu icon on the right (opens right-side drawer)
                     IconButton(
                       icon: const Icon(
                         Icons.menu,
@@ -1069,7 +656,7 @@ class _DashboardPageState extends State<DashboardPage> {
                         ),
                       ),
                       const SizedBox(height: 20),
-                      // Prediction Card (ML assessment)
+                      // Prediction Card
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(16),
@@ -1144,9 +731,7 @@ class _DashboardPageState extends State<DashboardPage> {
                                           ),
                                           decoration: BoxDecoration(
                                             color: const Color(0xFFF5F5F5),
-                                            borderRadius: BorderRadius.circular(
-                                              8,
-                                            ),
+                                            borderRadius: BorderRadius.circular(8),
                                           ),
                                           child: Text(
                                             _predictionData!['classification'] ??
@@ -1248,10 +833,7 @@ class _DashboardPageState extends State<DashboardPage> {
                                               color: Color(
                                                 int.parse(
                                                   (_wqiData!['color'] as String)
-                                                      .replaceFirst(
-                                                        '#',
-                                                        '0xFF',
-                                                      ),
+                                                      .replaceFirst('#', '0xFF'),
                                                 ),
                                               ),
                                               fontSize: 40,
@@ -1265,10 +847,7 @@ class _DashboardPageState extends State<DashboardPage> {
                                               color: Color(
                                                 int.parse(
                                                   (_wqiData!['color'] as String)
-                                                      .replaceFirst(
-                                                        '#',
-                                                        '0xFF',
-                                                      ),
+                                                      .replaceFirst('#', '0xFF'),
                                                 ),
                                               ),
                                               fontSize: 12,
@@ -1307,9 +886,9 @@ class _DashboardPageState extends State<DashboardPage> {
                                                 crossAxisAlignment:
                                                     CrossAxisAlignment.start,
                                                 children: [
-                                                  Text(
+                                                  const Text(
                                                     'Sensor Readings',
-                                                    style: const TextStyle(
+                                                    style: TextStyle(
                                                       color: Color(0xFF1E3A5F),
                                                       fontSize: 11,
                                                       fontWeight:
@@ -1385,7 +964,6 @@ class _DashboardPageState extends State<DashboardPage> {
                               sensor.isOffline()
                                   ? 'offline'
                                   : sensor.getStatus();
-                          // Human-friendly description for display
                           final sensorDesc =
                               sensor.isOffline()
                                   ? 'Offline'
@@ -1398,11 +976,8 @@ class _DashboardPageState extends State<DashboardPage> {
                                 PageRouteBuilder(
                                   opaque: true,
                                   pageBuilder:
-                                      (
-                                        context,
-                                        animation,
-                                        secondaryAnimation,
-                                      ) => SensorDetailPage(sensor: sensor),
+                                      (context, animation, secondaryAnimation) =>
+                                          SensorDetailPage(sensor: sensor),
                                   transitionsBuilder: (
                                     context,
                                     animation,
@@ -1493,9 +1068,7 @@ class _DashboardPageState extends State<DashboardPage> {
                                           color: statusColor.withValues(
                                             alpha: 0.2,
                                           ),
-                                          borderRadius: BorderRadius.circular(
-                                            6,
-                                          ),
+                                          borderRadius: BorderRadius.circular(6),
                                         ),
                                         child: Text(
                                           sensorDesc.toUpperCase(),

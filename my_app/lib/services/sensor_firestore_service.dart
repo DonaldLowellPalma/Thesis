@@ -418,6 +418,10 @@ class SensorApiService {
       throw Exception('Failed to fetch readings (${response.statusCode})');
     }
 
+
+    print('===== SENSOR READINGS RESPONSE =====');
+    print(response.body);
+
     final decoded = jsonDecode(response.body);
     if (decoded is Map && decoded['readings'] is List) {
       return List<Map<String, dynamic>>.from(decoded['readings']);

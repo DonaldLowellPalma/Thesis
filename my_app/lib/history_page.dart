@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 import '../services/sensor_firestore_service.dart';
@@ -11,6 +12,39 @@ class HistoryPage extends StatefulWidget {
 
   @override
   State<HistoryPage> createState() => _HistoryPageState();
+}
+
+Map<String, List<Map<String, dynamic>>> groupReadings(
+  List<Map<String, dynamic>> items,
+) {
+  final grouped = <String, List<Map<String, dynamic>>>{};
+
+  for (var reading in items) {
+    final sensorId = (reading['sensorId'] ?? '').toString();
+
+    String name;
+
+    switch (sensorId) {
+      case 'ph-level':
+        name = 'pH Level';
+        break;
+      case 'tds':
+        name = 'TDS';
+        break;
+      case 'temperature':
+        name = 'Temperature';
+        break;
+      case 'turbidity':
+        name = 'Turbidity';
+        break;
+      default:
+        name = 'Unknown';
+    }
+
+    grouped.putIfAbsent(name, () => []).add(reading);
+  }
+
+  return grouped;
 }
 
 class _HistoryPageState extends State<HistoryPage> {
@@ -49,28 +83,12 @@ class _HistoryPageState extends State<HistoryPage> {
       final items = await _api.fetchReadings(
         from: _from,
         to: _to,
-        limit: 20000,
+        limit: 200, // 🔥 IMPORTANT: DO NOT USE 20000
       );
 
-      debugPrint('📡 Fetched ${items.length} raw readings from backend');
+      debugPrint('📡 Fetched ${items.length} raw readings');
 
-      final grouped = <String, List<Map<String, dynamic>>>{};
-
-      for (var reading in items) {
-        String name = (reading['sensorName'] ?? reading['name'] ?? 'Unknown').toString();
-
-        // Normalize names for matching
-        if (name.toLowerCase().contains('ph')) name = 'pH Level';
-        if (name.toLowerCase().contains('tds')) name = 'TDS';
-        if (name.toLowerCase().contains('temp')) name = 'Temperature';
-        if (name.toLowerCase().contains('turb') || name.toLowerCase().contains('clar')) name = 'Turbidity';
-
-        grouped.putIfAbsent(name, () => []).add(reading);
-      }
-
-      grouped.forEach((key, list) {
-        list.sort((a, b) => (a['timestamp'] ?? '').toString().compareTo((b['timestamp'] ?? '').toString()));
-      });
+      final grouped = await compute(groupReadings, items);
 
       setState(() {
         _readingsBySensor = grouped;
@@ -78,10 +96,11 @@ class _HistoryPageState extends State<HistoryPage> {
 
       debugPrint('📊 Grouped sensors: ${grouped.keys.toList()}');
     } catch (e) {
-      debugPrint('❌ Error fetching readings: $e');
       setState(() => _errorMessage = e.toString());
     } finally {
-      if (mounted) setState(() => _loadingReadings = false);
+      if (mounted) {
+        setState(() => _loadingReadings = false);
+      }
     }
   }
 
@@ -91,7 +110,7 @@ class _HistoryPageState extends State<HistoryPage> {
       final csv = await _api.fetchReadingsCsv(
         from: _from,
         to: _to,
-        limit: 20000,
+        limit: 200,
       );
 
       final filename = 'waterguard_readings_${_from.toIso8601String().split('T').first}_to_${_to.toIso8601String().split('T').first}.csv';
@@ -116,31 +135,43 @@ class _HistoryPageState extends State<HistoryPage> {
 
   Widget _buildSensorChart(String sensorName) {
     final readings = _readingsBySensor[sensorName] ?? [];
+
     if (readings.isEmpty) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(40),
-          child: Text('No readings found for this sensor in the selected range',
-              style: TextStyle(color: Colors.white70)),
+          child: Text(
+            'No readings found for this sensor in the selected range',
+            style: TextStyle(color: Colors.white70),
+          ),
         ),
       );
     }
 
     final spots = <FlSpot>[];
-    for (int i = 0; i < readings.length; i++) {
+
+    // 🔥 IMPORTANT FIX: downsample to avoid lag
+    final step = math.max(1, readings.length ~/ 100);
+
+    for (int i = 0; i < readings.length; i += step) {
       final value = (readings[i]['value'] as num?)?.toDouble() ?? 0;
       spots.add(FlSpot(i.toDouble(), value));
     }
 
     final minY = spots.map((s) => s.y).reduce(math.min);
     final maxY = spots.map((s) => s.y).reduce(math.max);
-    final padding = (maxY - minY) * 0.15;
+
+    // 🔥 safe padding (prevents crash)
+    final padding = math.max(0.5, (maxY - minY) * 0.15);
 
     return SizedBox(
       height: 240,
       child: LineChart(
         LineChartData(
-          gridData: FlGridData(show: true, horizontalInterval: (maxY - minY) / 5),
+          gridData: FlGridData(
+            show: true,
+            horizontalInterval: (maxY - minY) / 5,
+          ),
           titlesData: FlTitlesData(
             bottomTitles: AxisTitles(
               sideTitles: SideTitles(
@@ -148,10 +179,16 @@ class _HistoryPageState extends State<HistoryPage> {
                 reservedSize: 30,
                 getTitlesWidget: (value, meta) {
                   final index = value.toInt();
-                  if (index % math.max(1, (readings.length ~/ 6)) == 0 && index < readings.length) {
-                    final ts = readings[index]['timestamp']?.toString() ?? '';
-                    return Text(ts.split(' ').last.substring(0, 5),
-                        style: const TextStyle(fontSize: 9, color: Colors.white60));
+                  if (index < readings.length && index % 20 == 0) {
+                    final ts =
+                        readings[index]['timestamp']?.toString() ?? '';
+                    return Text(
+                      ts.split(' ').last.substring(0, 5),
+                      style: const TextStyle(
+                        fontSize: 9,
+                        color: Colors.white60,
+                      ),
+                    );
                   }
                   return const Text('');
                 },
@@ -163,22 +200,35 @@ class _HistoryPageState extends State<HistoryPage> {
                 reservedSize: 40,
                 getTitlesWidget: (value, meta) => Text(
                   value.toStringAsFixed(1),
-                  style: const TextStyle(fontSize: 10, color: Colors.white70),
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Colors.white70,
+                  ),
                 ),
               ),
             ),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            topTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
           ),
-          borderData: FlBorderData(show: true, border: Border.all(color: const Color(0xFF1E3A5F))),
+          borderData: FlBorderData(
+            show: true,
+            border: Border.all(color: const Color(0xFF1E3A5F)),
+          ),
           lineBarsData: [
             LineChartBarData(
               spots: spots,
               isCurved: true,
               color: const Color(0xFF789CE6),
-              barWidth: 2.8,
+              barWidth: 2.5,
               dotData: const FlDotData(show: false),
-              belowBarData: BarAreaData(show: true, color: const Color(0xFF789CE6).withOpacity(0.18)),
+              belowBarData: BarAreaData(
+                show: true,
+                color: const Color(0xFF789CE6).withOpacity(0.18),
+              ),
             ),
           ],
           minY: minY - padding,
